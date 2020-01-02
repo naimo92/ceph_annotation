@@ -175,6 +175,7 @@ static std::atomic_flag buffer_debug_lock = ATOMIC_FLAG_INIT;
     int mempool;
 
     mutable std::atomic_flag crc_spinlock = ATOMIC_FLAG_INIT;
+    //该map记录crc，key为偏移量范围的pair，value为base与crc的pair；大概base为一个用户自定义的计算方式
     map<pair<size_t, size_t>, pair<uint32_t, uint32_t> > crc_map;
 
     explicit raw(unsigned l, int mempool=mempool::mempool_buffer_anon)
@@ -245,15 +246,20 @@ static std::atomic_flag buffer_debug_lock = ATOMIC_FLAG_INIT;
       // and/or registered memory that is scarce
       return true;
     }
+    //从crc缓存中获取crc
     bool get_crc(const pair<size_t, size_t> &fromto,
          pair<uint32_t, uint32_t> *crc) const {
+      //对ptr下crc字段加锁
       simple_spin_lock(&crc_spinlock);
+      //在crc_map下查找
       map<pair<size_t, size_t>, pair<uint32_t, uint32_t> >::const_iterator i =
       crc_map.find(fromto);
+      //若未找到
       if (i == crc_map.end()) {
           simple_spin_unlock(&crc_spinlock);
           return false;
       }
+      //找到，返回crc,map中的第二个字段
       *crc = i->second;
       simple_spin_unlock(&crc_spinlock);
       return true;
@@ -1369,6 +1375,7 @@ static std::atomic_flag buffer_debug_lock = ATOMIC_FLAG_INIT;
     return l;
   }
 
+  //非类型参数模板
   template<bool is_const>
   uint32_t buffer::list::iterator_impl<is_const>::crc32c(
     size_t length, uint32_t crc)
@@ -2132,15 +2139,22 @@ static std::atomic_flag buffer_debug_lock = ATOMIC_FLAG_INIT;
     return curbuf->c_str() + off;
   }
 
+/*other：bufferlist
+  off：在整个buffer中的偏移量
+  len:current iterator offset in buffer::list，要取的数据长度
+  */
   void buffer::list::substr_of(const list& other, unsigned off, unsigned len)
   {
+    //要取的数据长度大于数据总长度
     if (off + len > other.length())
       throw end_of_buffer();
 
+    //会调用std::list.clear，将调用该方法的对象的bufferlist清空
     clear();
 
     // skip off
     std::list<ptr>::const_iterator curbuf = other._buffers.begin();
+    //找到off所在的位置，循环结束后off指示当前ptr中的偏移量
     while (off > 0 &&
 	   off >= curbuf->length()) {
       // skip this buffer
@@ -2148,12 +2162,16 @@ static std::atomic_flag buffer_debug_lock = ATOMIC_FLAG_INIT;
       off -= (*curbuf).length();
       ++curbuf;
     }
+    //断言：len！=0且迭代器走到了end则错误退出
     assert(len == 0 || curbuf != other._buffers.end());
     
+    //
     while (len > 0) {
       // partial?
+      //要取的数据全部在当前raw内
       if (off + len < curbuf->length()) {
 	//cout << "copying partial of " << *curbuf << std::endl;
+  //将数据加入到this._buffers中，并设置长度
 	_buffers.push_back( ptr( *curbuf, off, len ) );
 	_len += len;
 	break;
@@ -2161,6 +2179,7 @@ static std::atomic_flag buffer_debug_lock = ATOMIC_FLAG_INIT;
       
       // through end
       //cout << "copying end (all?) of " << *curbuf << std::endl;
+      //howmuch表示当前ptr内有多少数据需要取出，将当前合适数据取出，并设置其他变量
       unsigned howmuch = curbuf->length() - off;
       _buffers.push_back( ptr( *curbuf, off, howmuch ) );
       _len += howmuch;
@@ -2323,6 +2342,7 @@ int buffer::list::read_file(const char *fn, std::string *error)
   return 0;
 }
 
+//读取fd中len长度的数据，并加入到bufferlist中的_buffer中
 ssize_t buffer::list::read_fd(int fd, size_t len)
 {
   // try zero copy first
@@ -2331,10 +2351,14 @@ ssize_t buffer::list::read_fd(int fd, size_t len)
     // available for raw_pipe until we actually inspect the data
     return 0;
   }
+  //创建一个长度为len的bufferptr,len表示raw长度
   bufferptr bp = buffer::create(len);
+  //将fd中len长度的内容读入raw中
   ssize_t ret = safe_read(fd, (void*)bp.c_str(), len);
   if (ret >= 0) {
+    //读到数据，设置len为实际读到的长度
     bp.set_length(ret);
+    //将ptr加入到list的_buffer中
     append(std::move(bp));
   }
   return ret;
@@ -2528,40 +2552,53 @@ int buffer::list::write_fd_zero_copy(int fd) const
   return 0;
 }
 
+//遍历_buffers,找对应base的crc
 __u32 buffer::list::crc32c(__u32 crc) const
 {
+  //使用迭代器遍历_buffers
   for (std::list<ptr>::const_iterator it = _buffers.begin();
        it != _buffers.end();
        ++it) {
+         //ptr的len不为0
     if (it->length()) {
+      //获取raw数据
       raw *r = it->get_raw();
+      //pair为一种组合，将<type1,type2>组合成一个数据结构，使用结构体组合形式
+      //offset返回ptr的off数据，表示当前ptr在buffers中的偏移位置，it->offset() + it->length()表示该ptr在buffers中的结束位置
+      //所以，ofs表示当前计算crc的范围（两个偏移量之间的部分）；ccrc记录计算过得crc
       pair<size_t, size_t> ofs(it->offset(), it->offset() + it->length());
       pair<uint32_t, uint32_t> ccrc;
+      //获取之前已经计算过得crc，若找到，走下面的分支
       if (r->get_crc(ofs, &ccrc)) {
-	if (ccrc.first == crc) {
-	  // got it already
-	  crc = ccrc.second;
-	  if (buffer_track_crc)
-	    buffer_cached_crc++;
-	} else {
-	  /* If we have cached crc32c(buf, v) for initial value v,
-	   * we can convert this to a different initial value v' by:
-	   * crc32c(buf, v') = crc32c(buf, v) ^ adjustment
-	   * where adjustment = crc32c(0*len(buf), v ^ v')
-	   *
-	   * http://crcutil.googlecode.com/files/crc-doc.1.0.pdf
-	   * note, u for our crc32c implementation is 0
-	   */
-	  crc = ccrc.second ^ ceph_crc32c(ccrc.first ^ crc, NULL, it->length());
-	  if (buffer_track_crc)
-	    buffer_cached_crc_adjusted++;
-	}
-      } else {
-	if (buffer_track_crc)
-	  buffer_missed_crc++;
-	uint32_t base = crc;
-	crc = ceph_crc32c(crc, (unsigned char*)it->c_str(), it->length());
-	r->set_crc(ofs, make_pair(base, crc));
+        //若first==0xffffffff
+        if (ccrc.first == crc) {
+          // got it already, return crc
+          crc = ccrc.second;
+          //大概跟引用计数有关
+          if (buffer_track_crc)
+            buffer_cached_crc++;
+	      } else {
+          /* If we have cached crc32c(buf, v) for initial value v,
+          * we can convert this to a different initial value v' by:
+          * crc32c(buf, v') = crc32c(buf, v) ^ adjustment
+          * where adjustment = crc32c(0*len(buf), v ^ v')
+          *
+          * http://crcutil.googlecode.com/files/crc-doc.1.0.pdf
+          * note, u for our crc32c implementation is 0
+          */
+         //计算crc
+          crc = ccrc.second ^ ceph_crc32c(ccrc.first ^ crc, NULL, it->length());
+          if (buffer_track_crc)
+            buffer_cached_crc_adjusted++;
+        }
+      } else {//若未找到，走下面的分支
+        if (buffer_track_crc)
+          buffer_missed_crc++;
+        uint32_t base = crc;
+        //计算crc，算raw的crc
+        crc = ceph_crc32c(crc, (unsigned char*)it->c_str(), it->length());
+        //将计算得的crc放入map中
+        r->set_crc(ofs, make_pair(base, crc));
       }
     }
   }

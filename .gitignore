@@ -59,5 +59,8 @@ GTAGS
 # common cmake build dir
 /build
 
+#vscode middle files
+/.vscode
+
 # editor backup files etc.
 \#*\#

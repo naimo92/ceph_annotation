@@ -4103,15 +4103,22 @@ int BlueStore::write_meta(const std::string& key, const std::string& value)
 int BlueStore::read_meta(const std::string& key, std::string *value)
 {
   bluestore_bdev_label_t label;
+  //path定义在父类ObjectStore内
   string p = path + "/block";
+  //cct定义在父类ObjectStore内
+  //根据path读取label并返回
   int r = _read_bdev_label(cct, p, &label);
   if (r < 0) {
+    //  若读取失败，直接调用父类read_meta方法
     return ObjectStore::read_meta(key, value);
   }
+  //从读取的label中查找key是否存在
   auto i = label.meta.find(key);
   if (i == label.meta.end()) {
+    //若不存在，调用父类方法
     return ObjectStore::read_meta(key, value);
   }
+  //若存在，则返回
   *value = i->second;
   return 0;
 }
@@ -4358,6 +4365,7 @@ int BlueStore::_read_bdev_label(CephContext* cct, string path,
 				bluestore_bdev_label_t *label)
 {
   dout(10) << __func__ << dendl;
+  //打开后缀为“block”的文件，O_CLOEXEC防止当前线程被fork时的文件描述符资源问题，设置这个标志后，fork时新进程里会关闭该文件描述符
   int fd = TEMP_FAILURE_RETRY(::open(path.c_str(), O_RDONLY|O_CLOEXEC));
   if (fd < 0) {
     fd = -errno;
@@ -4366,7 +4374,9 @@ int BlueStore::_read_bdev_label(CephContext* cct, string path,
     return fd;
   }
   bufferlist bl;
+  //从刚才打开的文件里读取BDEV_LABEL_BLOCK_SIZE长度的内容，存放在bufferlist中的_buffer中
   int r = bl.read_fd(fd, BDEV_LABEL_BLOCK_SIZE);
+  //关闭fd
   VOID_TEMP_FAILURE_RETRY(::close(fd));
   if (r < 0) {
     derr << __func__ << " failed to read from " << path
@@ -4375,10 +4385,13 @@ int BlueStore::_read_bdev_label(CephContext* cct, string path,
   }
 
   uint32_t crc, expected_crc;
+  //迭代器，拿到_buffer中的第一个ptr
   bufferlist::iterator p = bl.begin();
   try {
+    //decode定义在encoding.h中，
     ::decode(*label, p);
     bufferlist t;
+    //
     t.substr_of(bl, 0, p.get_off());
     crc = t.crc32c(-1);
     ::decode(expected_crc, p);
@@ -5799,6 +5812,7 @@ int BlueStore::_mount(bool kv_only)
 
   {
     string type;
+    //读取元数据“type”
     int r = read_meta("type", &type);
     if (r < 0) {
       derr << __func__ << " failed to load os-type: " << cpp_strerror(r)
