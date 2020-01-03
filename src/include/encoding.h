@@ -1080,6 +1080,7 @@ decode(std::array<T, N>& v, bufferlist::iterator& p)
  * @param v current version of the encoding that the code supports/encodes
  * @param bl bufferlist::iterator for the encoded data
  */
+//获取struct_v：版本号，struct_compat：包类型，struct_len：长度，设置结束位置struct_end
 #define DECODE_START(v, bl)						\
   __u8 struct_v, struct_compat;						\
   ::decode(struct_v, bl);						\
@@ -1161,6 +1162,7 @@ decode(std::array<T, N>& v, bufferlist::iterator& p)
  *
  * @param bl bufferlist::iterator we were decoding from
  */
+//做decode之后的检查工作，检查decode是否发生错误
 #define DECODE_FINISH(bl)						\
   } while (false);							\
   if (struct_end) {							\

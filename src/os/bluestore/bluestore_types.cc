@@ -34,6 +34,7 @@ void bluestore_bdev_label_t::encode(bufferlist& bl) const
   ENCODE_FINISH(bl);
 }
 
+//在decode上封装了一层东西，
 void bluestore_bdev_label_t::decode(bufferlist::iterator& p)
 {
   p.advance(60); // see above

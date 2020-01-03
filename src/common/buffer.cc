@@ -1165,45 +1165,49 @@ static std::atomic_flag buffer_debug_lock = ATOMIC_FLAG_INIT;
   buffer::list::iterator_impl<is_const>::iterator_impl(const buffer::list::iterator& i)
     : iterator_impl<is_const>(i.bl, i.off, i.p, i.p_off) {}
 
+  //传入参数o为原来bufferlist中的off字段
   template<bool is_const>
   void buffer::list::iterator_impl<is_const>::advance(int o)
   {
     //cout << this << " advance " << o << " from " << off << " (p_off " << p_off << " in " << p->length() << ")" << std::endl;
+    //
     if (o > 0) {
       p_off += o;
       while (p_off > 0) {
-	if (p == ls->end())
-	  throw end_of_buffer();
-	if (p_off >= p->length()) {
-	  // skip this buffer
-	  p_off -= p->length();
-	  p++;
-	} else {
-	  // somewhere in this buffer!
-	  break;
-	}
+        //如果查找到末尾还没有匹配到，抛错
+        if (p == ls->end())
+          throw end_of_buffer();
+        if (p_off >= p->length()) {
+          // skip this buffer
+          p_off -= p->length();
+          p++;
+        } else {
+          // somewhere in this buffer!
+          break;
+        }
       }
       off += o;
       return;
     }
     while (o < 0) {
       if (p_off) {
-	unsigned d = -o;
-	if (d > p_off)
-	  d = p_off;
-	p_off -= d;
-	off -= d;
-	o += d;
+        unsigned d = -o;
+        if (d > p_off)
+          d = p_off;
+        p_off -= d;//p_off=0
+        off -= d;//
+        o += d;//
       } else if (off > 0) {
-	assert(p != ls->begin());
-	p--;
-	p_off = p->length();
+        assert(p != ls->begin());
+        p--;
+        p_off = p->length();
       } else {
-	throw end_of_buffer();
+        throw end_of_buffer();
       }
     }
   }
 
+  //
   template<bool is_const>
   void buffer::list::iterator_impl<is_const>::seek(unsigned o)
   {
@@ -1240,13 +1244,14 @@ static std::atomic_flag buffer_debug_lock = ATOMIC_FLAG_INIT;
 
   // copy data out.
   // note that these all _append_ to dest!
+  //uint32最终的copy调用函数，将长度len的数据copy到dest中
   template<bool is_const>
   void buffer::list::iterator_impl<is_const>::copy(unsigned len, char *dest)
   {
     if (p == ls->end()) seek(off);
     while (len > 0) {
       if (p == ls->end())
-	throw end_of_buffer();
+	      throw end_of_buffer();
       assert(p->length() > 0);
 
       unsigned howmuch = p->length() - p_off;

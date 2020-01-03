@@ -373,10 +373,11 @@ namespace buffer CEPH_BUFFER_API {
 					typename std::list<ptr>::const_iterator,
 					typename std::list<ptr>::iterator>::type list_iter_t;
       bl_t* bl;
+      //ls指向bufferlist对象中的_buffers字段，是一个ptr的list
       list_t* ls;  // meh.. just here to avoid an extra pointer dereference..
-      unsigned off; // in bl
-      list_iter_t p;
-      unsigned p_off;   // in *p
+      unsigned off; // in bl  
+      list_iter_t p;//当前迭代器的位置
+      unsigned p_off;   // in *p  
       friend class iterator_impl<true>;
 
     public:

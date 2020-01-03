@@ -4388,7 +4388,7 @@ int BlueStore::_read_bdev_label(CephContext* cct, string path,
   //迭代器，拿到_buffer中的第一个ptr
   bufferlist::iterator p = bl.begin();
   try {
-    //decode定义在encoding.h中，
+    //该decode的定义在encoding.h中，通过WRITE_CLASS_ENCODER宏定义，真正调用的是*label.decode(p),定义在label的类定义中
     ::decode(*label, p);
     bufferlist t;
     //
