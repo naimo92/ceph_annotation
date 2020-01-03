@@ -1165,49 +1165,58 @@ static std::atomic_flag buffer_debug_lock = ATOMIC_FLAG_INIT;
   buffer::list::iterator_impl<is_const>::iterator_impl(const buffer::list::iterator& i)
     : iterator_impl<is_const>(i.bl, i.off, i.p, i.p_off) {}
 
-  //传入参数o为原来bufferlist中的off字段
+  //传入参数o代表的意义:o代表已经操作的长度，>0表示向后操作，<0表示向前操作
+  //该函数的作用为，调整迭代器中的各个偏移量到合适的位置上
   template<bool is_const>
   void buffer::list::iterator_impl<is_const>::advance(int o)
   {
     //cout << this << " advance " << o << " from " << off << " (p_off " << p_off << " in " << p->length() << ")" << std::endl;
-    //
     if (o > 0) {
+      //当前迭代器raw中的偏移量右移o
       p_off += o;
+      //遍历到实际的p_off位置
       while (p_off > 0) {
-        //如果查找到末尾还没有匹配到，抛错
+        //若此时迭代器在最末尾，抛错
         if (p == ls->end())
           throw end_of_buffer();
+        //若迭代器当前的偏移量已经超过整个raw的长度
         if (p_off >= p->length()) {
           // skip this buffer
+          //迭代到下一个迭代器，此p_off已经调整为下一个迭代器中的偏移量
           p_off -= p->length();
           p++;
+        //偏移量在当前raw内，表示数据一定落在当raw内
         } else {
           // somewhere in this buffer!
           break;
         }
       }
+      //当前迭代器中整个buffer的偏移量右移o
       off += o;
       return;
     }
+    
     while (o < 0) {
+      //当前的P-off不为0
       if (p_off) {
         unsigned d = -o;
+        //向后退的长度超过当前当前raw偏移量，意味着需要退到上一个迭代器
         if (d > p_off)
-          d = p_off;
-        p_off -= d;//p_off=0
-        off -= d;//
-        o += d;//
+          d = p_off;//
+        p_off -= d;//p_off向后回退
+        off -= d;//off向后回退
+        o += d;//o的值去掉已经回退的长度
       } else if (off > 0) {
         assert(p != ls->begin());
-        p--;
-        p_off = p->length();
+        p--;//迭代器向后回退一个位置
+        p_off = p->length();//p_off指向最后
       } else {
         throw end_of_buffer();
       }
     }
   }
 
-  //
+  //查找传入长度o的位置，并记录到迭代器信息中，O表示整个buffer的偏移量
   template<bool is_const>
   void buffer::list::iterator_impl<is_const>::seek(unsigned o)
   {
@@ -1244,22 +1253,30 @@ static std::atomic_flag buffer_debug_lock = ATOMIC_FLAG_INIT;
 
   // copy data out.
   // note that these all _append_ to dest!
-  //uint32最终的copy调用函数，将长度len的数据copy到dest中
+  //uint32 decode最终的copy调用函数，将长度len的数据copy到dest中
   template<bool is_const>
   void buffer::list::iterator_impl<is_const>::copy(unsigned len, char *dest)
   {
+    //查找当前off的位置，并记录下来
     if (p == ls->end()) seek(off);
+    //循环拷贝
     while (len > 0) {
       if (p == ls->end())
 	      throw end_of_buffer();
       assert(p->length() > 0);
 
+      //迭代器当前指向的ptr中，偏移量之后剩余的数据
       unsigned howmuch = p->length() - p_off;
+      //若要copy的长度小于剩余的数据量，指定howmuch=len
       if (len < howmuch) howmuch = len;
+      //将从p_off开始，howmuch长度的数据copy到dest中
       p->copy_out(p_off, howmuch, dest);
+      //dest指针后移
       dest += howmuch;
-
+      
+      //len减去已经copy出的部分
       len -= howmuch;
+      //
       advance(howmuch);
     }
   }

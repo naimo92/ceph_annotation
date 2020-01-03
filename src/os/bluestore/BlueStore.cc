@@ -4394,6 +4394,7 @@ int BlueStore::_read_bdev_label(CephContext* cct, string path,
     //
     t.substr_of(bl, 0, p.get_off());
     crc = t.crc32c(-1);
+    //该decode的定义在encoding.h中，通过WRITE_INTTYPE_ENCODER宏定义,实际调用decode_raw
     ::decode(expected_crc, p);
   }
   catch (buffer::error& e) {

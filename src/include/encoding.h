@@ -68,6 +68,7 @@ inline void encode_raw(const T& t, bufferlist& bl)
 {
   bl.append((char*)&t, sizeof(t));
 }
+//将p中对应长度的数据copy出来，并调节各种指针的位置
 template<class T>
 inline void decode_raw(T& t, bufferlist::iterator &p)
 {
@@ -104,7 +105,7 @@ inline void decode(bool &v, bufferlist::iterator& p) {
 
 // -----------------------------------
 // int types
-
+//数字型encode、decode函数
 #define WRITE_INTTYPE_ENCODER(type, etype)				\
   inline void encode(type v, bufferlist& bl, uint64_t features=0) {	\
     ceph_##etype e;					                \

@@ -377,7 +377,7 @@ namespace buffer CEPH_BUFFER_API {
       list_t* ls;  // meh.. just here to avoid an extra pointer dereference..
       unsigned off; // in bl  
       list_iter_t p;//当前迭代器的位置
-      unsigned p_off;   // in *p  
+      unsigned p_off;   // in *p  当前迭代器中raw数据的偏移量,计算过程中有可能超过当前raw的长度，表示在在一个迭代器中
       friend class iterator_impl<true>;
 
     public:
